@@ -1,0 +1,12 @@
+const {
+    description: "Kuetix Ecommerce API — online goods/services sales with shopping cart and checkout. Composes cart, sales, stock, invoice, payment, partner, product, tax, ledger, fiscal, account, currency, auth, company, audit, uom.",
+    version: "0.1.0",
+    enabled: true,
+    cors: {
+        AllowedMethods:   ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        AllowedHeaders:   ["Origin", "Content-Type", "Accept", "Authorization"],
+        ExposedHeaders:   ["Content-Length"],
+        AllowCredentials: true,
+        MaxAge:           12,
+    },
+}

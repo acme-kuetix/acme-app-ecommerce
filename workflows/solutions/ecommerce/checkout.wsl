@@ -1,0 +1,522 @@
+// POST /carts/{cartId}/checkout — convert a draft cart into a completed order.
+// Composition concern: chains cart → sales-order → invoice → payment → stock-move.
+module checkout
+
+import collections/ops
+import core/orchestration
+import core/utils
+import datetime/ops
+import persistence/store
+import sequence/sequence
+import services/common
+
+workflow checkout {
+  start: LoadCart
+
+  state LoadCart {
+    action persistence/store/store.Get(
+      collection: "carts",
+      id: $url.cartId
+    ) as CartResult
+    on success -> GetToday
+    on error -> LoadCartFailed
+  }
+
+  state GetToday {
+    action datetime/ops/ops.Now() as Today
+    on success -> GetOrderId
+    on error -> GetTodayFailed
+  }
+
+  state GetOrderId {
+    action sequence/sequence.NextByCode(code: "sales-order", scope: "") as OrderIdResult
+    on success -> CreateOrder
+    on error -> GetOrderIdFailed
+  }
+
+  state CreateOrder {
+    action persistence/store/store.Create(
+      collection: "sales_orders",
+      id: $OrderIdResult.response.formatted,
+      doc: {
+        id: $OrderIdResult.response.formatted,
+        number: $OrderIdResult.response.formatted,
+        reference: "checkout",
+        partnerId: $CartResult.response.doc.partnerId,
+        date: $Today.response.result,
+        dueDate: "",
+        currencyCode: $CartResult.response.doc.currencyCode,
+        journalId: "",
+        state: "sent",
+        note: "from cart " + $url.cartId,
+        lines: [],
+        subtotal: 0,
+        taxTotal: 0,
+        total: 0
+      }
+    ) as OrderCreateResult
+    on success -> SetMapContext
+    on error -> CreateOrderFailed
+  }
+
+  state SetMapContext {
+    action core/utils/utils.SetValue(
+      key: "checkout.orderId",
+      value: $OrderIdResult.response.formatted
+    ) as OrderIdSet
+    on success -> SetCurrencyContext
+    on error -> SetMapContextFailed
+  }
+
+  state SetCurrencyContext {
+    action core/utils/utils.SetValue(
+      key: "checkout.currencyCode",
+      value: $CartResult.response.doc.currencyCode
+    ) as CurrencySet
+    on success -> MapCartLines
+    on error -> SetCurrencyContextFailed
+  }
+
+  state MapCartLines {
+    action collections/ops/ops.Map(
+      arr: $CartResult.response.doc.lines,
+      workflow: "solutions/cart/cart-line-add"
+    ) as MapResult
+    on success -> AttachOrderLines
+    on error -> MapCartLinesFailed
+  }
+
+  state AttachOrderLines {
+    action persistence/store/store.Update(
+      collection: "sales_orders",
+      id: $OrderIdResult.response.formatted,
+      doc: {
+        id: $OrderIdResult.response.formatted,
+        number: $OrderIdResult.response.formatted,
+        reference: "checkout",
+        partnerId: $CartResult.response.doc.partnerId,
+        date: $Today.response.result,
+        dueDate: "",
+        currencyCode: $CartResult.response.doc.currencyCode,
+        journalId: "",
+        state: "sent",
+        note: "from cart " + $url.cartId,
+        lines: $MapResult.response.results,
+        subtotal: 0,
+        taxTotal: 0,
+        total: 0
+      }
+    ) as AttachResult
+    on success -> SetRecomputeLines
+    on error -> AttachOrderLinesFailed
+  }
+
+  state SetRecomputeLines {
+    action core/utils/utils.SetValue(
+      key: "recomputeTotals.lines",
+      value: $MapResult.response.results
+    ) as LinesSet
+    on success -> SetRecomputeCurrency
+    on error -> SetRecomputeLinesFailed
+  }
+
+  state SetRecomputeCurrency {
+    action core/utils/utils.SetValue(
+      key: "recomputeTotals.currency",
+      value: $CartResult.response.doc.currencyCode
+    ) as CurrencySet2
+    on success -> RecomputeOrder
+    on error -> SetRecomputeCurrencyFailed
+  }
+
+  state RecomputeOrder {
+    action core/orchestration/orchestration.RunFeature(name: "features/recompute_totals") as RecomputeResult
+    on success -> ReadOrderTotal
+    on error -> RecomputeOrderFailed
+  }
+
+  state ReadOrderTotal {
+    action core/utils/utils.GetValue(key: "recomputeTotals.total") as TotalRead
+    on success -> ReadOrderSubtotal
+    on error -> ReadOrderTotalFailed
+  }
+
+  state ReadOrderSubtotal {
+    action core/utils/utils.GetValue(key: "recomputeTotals.subtotal") as SubtotalRead
+    on success -> ReadOrderTaxTotal
+    on error -> ReadOrderSubtotalFailed
+  }
+
+  state ReadOrderTaxTotal {
+    action core/utils/utils.GetValue(key: "recomputeTotals.taxTotal") as TaxTotalRead
+    on success -> ConfirmOrder
+    on error -> ReadOrderTaxTotalFailed
+  }
+
+  state ConfirmOrder {
+    action persistence/store/store.Update(
+      collection: "sales_orders",
+      id: $OrderIdResult.response.formatted,
+      doc: {
+        id: $OrderIdResult.response.formatted,
+        number: $OrderIdResult.response.formatted,
+        reference: "checkout",
+        partnerId: $CartResult.response.doc.partnerId,
+        date: $Today.response.result,
+        dueDate: "",
+        currencyCode: $CartResult.response.doc.currencyCode,
+        journalId: "",
+        state: "confirmed",
+        note: "from cart " + $url.cartId,
+        lines: $MapResult.response.results,
+        subtotal: $SubtotalRead.response.value,
+        taxTotal: $TaxTotalRead.response.value,
+        total: $TotalRead.response.value
+      }
+    ) as ConfirmOrderResult
+    on success -> GetInvoiceId
+    on error -> ConfirmOrderFailed
+  }
+
+  state GetInvoiceId {
+    action sequence/sequence.NextByCode(code: "invoice", scope: "") as InvoiceIdResult
+    on success -> CreateInvoice
+    on error -> GetInvoiceIdFailed
+  }
+
+  state CreateInvoice {
+    action persistence/store/store.Create(
+      collection: "invoices",
+      id: $InvoiceIdResult.response.formatted,
+      doc: {
+        id: $InvoiceIdResult.response.formatted,
+        number: $InvoiceIdResult.response.formatted,
+        reference: "checkout",
+        partnerId: $CartResult.response.doc.partnerId,
+        invoiceType: "out",
+        date: $Today.response.result,
+        dueDate: "",
+        currencyCode: $CartResult.response.doc.currencyCode,
+        journalId: "",
+        state: "draft",
+        note: "from cart " + $url.cartId,
+        lines: $MapResult.response.results,
+        subtotal: $SubtotalRead.response.value,
+        taxTotal: $TaxTotalRead.response.value,
+        total: $TotalRead.response.value
+      }
+    ) as InvoiceCreateResult
+    on success -> ConfirmInvoice
+    on error -> CreateInvoiceFailed
+  }
+
+  state ConfirmInvoice {
+    action persistence/store/store.Update(
+      collection: "invoices",
+      id: $InvoiceIdResult.response.formatted,
+      doc: {
+        id: $InvoiceIdResult.response.formatted,
+        number: $InvoiceIdResult.response.formatted,
+        reference: "checkout",
+        partnerId: $CartResult.response.doc.partnerId,
+        invoiceType: "out",
+        date: $Today.response.result,
+        dueDate: "",
+        currencyCode: $CartResult.response.doc.currencyCode,
+        journalId: "",
+        state: "confirmed",
+        note: "from cart " + $url.cartId,
+        lines: $MapResult.response.results,
+        subtotal: $SubtotalRead.response.value,
+        taxTotal: $TaxTotalRead.response.value,
+        total: $TotalRead.response.value
+      }
+    ) as InvoiceConfirmResult
+    on success -> GetPaymentId
+    on error -> ConfirmInvoiceFailed
+  }
+
+  state GetPaymentId {
+    action sequence/sequence.NextByCode(code: "payment", scope: "") as PaymentIdResult
+    on success -> LoadPaymentMethod
+    on error -> GetPaymentIdFailed
+  }
+
+  state LoadPaymentMethod {
+    action persistence/store/store.Get(
+      collection: "payment_methods",
+      id: $json.paymentMethodId
+    ) as MethodResult
+    on success -> CreatePayment
+    on error -> LoadPaymentMethodFailed
+  }
+
+  state CreatePayment {
+    action persistence/store/store.Create(
+      collection: "payments",
+      id: $PaymentIdResult.response.formatted,
+      doc: {
+        number: $PaymentIdResult.response.formatted,
+        partnerId: $CartResult.response.doc.partnerId,
+        amount: $TotalRead.response.value,
+        currencyCode: $CartResult.response.doc.currencyCode,
+        date: $Today.response.result,
+        methodId: $json.paymentMethodId,
+        providerId: $MethodResult.response.doc.providerId,
+        reference: "checkout",
+        note: "from cart " + $url.cartId,
+        state: "draft",
+        allocations: [],
+        refundedAmount: 0,
+        journalMoveId: "",
+        providerRef: "",
+        createdAt: "now",
+        updatedAt: "now"
+      }
+    ) as PaymentCreateResult
+    on success -> DoneOrder
+    on error -> CreatePaymentFailed
+  }
+
+  state DoneOrder {
+    action persistence/store/store.Update(
+      collection: "sales_orders",
+      id: $OrderIdResult.response.formatted,
+      doc: {
+        id: $OrderIdResult.response.formatted,
+        number: $OrderIdResult.response.formatted,
+        reference: "checkout",
+        partnerId: $CartResult.response.doc.partnerId,
+        date: $Today.response.result,
+        dueDate: "",
+        currencyCode: $CartResult.response.doc.currencyCode,
+        journalId: "",
+        state: "done",
+        note: "from cart " + $url.cartId,
+        lines: $MapResult.response.results,
+        subtotal: $SubtotalRead.response.value,
+        taxTotal: $TaxTotalRead.response.value,
+        total: $TotalRead.response.value
+      }
+    ) as OrderDoneResult
+    on success -> ConvertCart
+    on error -> DoneOrderFailed
+  }
+
+  state ConvertCart {
+    action persistence/store/store.Update(
+      collection: "carts",
+      id: $url.cartId,
+      doc: {
+        id: $CartResult.response.doc.id,
+        partnerId: $CartResult.response.doc.partnerId,
+        currencyCode: $CartResult.response.doc.currencyCode,
+        state: "converted",
+        lines: $CartResult.response.doc.lines
+      }
+    ) as CartConvertResult
+    on success -> OK
+    on error -> ConvertCartFailed
+  }
+
+  state OK {
+    action services/common/response.Response(
+      value: {
+        cartId: $url.cartId,
+        orderId: $OrderIdResult.response.formatted,
+        invoiceId: $InvoiceIdResult.response.formatted,
+        paymentId: $PaymentIdResult.response.formatted,
+        total: $TotalRead.response.value,
+        currencyCode: $CartResult.response.doc.currencyCode
+      },
+      statusCode: 200
+    ) as FinalResult
+    end ok
+  }
+
+  // ─── Failure handlers ──────────────────────────────────────────
+
+  state LoadCartFailed {
+    action services/common/response.Response(
+      value: { message: $CartResult.response.message, code: $CartResult.response.code },
+      statusCode: 404
+    ) as ErrorResult
+    end fail
+  }
+
+  state GetTodayFailed {
+    action services/common/response.Response(
+      value: { message: "checkout failed", code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state GetOrderIdFailed {
+    action services/common/response.Response(
+      value: { message: $OrderIdResult.response.message, code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state CreateOrderFailed {
+    action services/common/response.Response(
+      value: { message: $OrderCreateResult.response.message, code: $OrderCreateResult.response.code },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state SetMapContextFailed {
+    action services/common/response.Response(
+      value: { message: $OrderIdSet.response.message, code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state SetCurrencyContextFailed {
+    action services/common/response.Response(
+      value: { message: $CurrencySet.response.message, code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state MapCartLinesFailed {
+    action services/common/response.Response(
+      value: { message: $MapResult.response.message, code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state AttachOrderLinesFailed {
+    action services/common/response.Response(
+      value: { message: $AttachResult.response.message, code: $AttachResult.response.code },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state SetRecomputeLinesFailed {
+    action services/common/response.Response(
+      value: { message: $LinesSet.response.message, code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state SetRecomputeCurrencyFailed {
+    action services/common/response.Response(
+      value: { message: $CurrencySet2.response.message, code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state RecomputeOrderFailed {
+    action services/common/response.Response(
+      value: { message: "recompute_totals failed", code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state ReadOrderTotalFailed {
+    action services/common/response.Response(
+      value: { message: $TotalRead.response.message, code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state ReadOrderSubtotalFailed {
+    action services/common/response.Response(
+      value: { message: $SubtotalRead.response.message, code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state ReadOrderTaxTotalFailed {
+    action services/common/response.Response(
+      value: { message: $TaxTotalRead.response.message, code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state ConfirmOrderFailed {
+    action services/common/response.Response(
+      value: { message: $ConfirmOrderResult.response.message, code: $ConfirmOrderResult.response.code },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state GetInvoiceIdFailed {
+    action services/common/response.Response(
+      value: { message: $InvoiceIdResult.response.message, code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state CreateInvoiceFailed {
+    action services/common/response.Response(
+      value: { message: $InvoiceCreateResult.response.message, code: $InvoiceCreateResult.response.code },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state ConfirmInvoiceFailed {
+    action services/common/response.Response(
+      value: { message: $InvoiceConfirmResult.response.message, code: $InvoiceConfirmResult.response.code },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state GetPaymentIdFailed {
+    action services/common/response.Response(
+      value: { message: $PaymentIdResult.response.message, code: "checkout_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state LoadPaymentMethodFailed {
+    action services/common/response.Response(
+      value: { message: $MethodResult.response.message, code: $MethodResult.response.code },
+      statusCode: 404
+    ) as ErrorResult
+    end fail
+  }
+
+  state CreatePaymentFailed {
+    action services/common/response.Response(
+      value: { message: $PaymentCreateResult.response.message, code: $PaymentCreateResult.response.code },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state DoneOrderFailed {
+    action services/common/response.Response(
+      value: { message: $OrderDoneResult.response.message, code: $OrderDoneResult.response.code },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state ConvertCartFailed {
+    action services/common/response.Response(
+      value: { message: $CartConvertResult.response.message, code: $CartConvertResult.response.code },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+}

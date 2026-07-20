@@ -1,0 +1,351 @@
+// POST /sales-orders/{orderId}/lines — add a product line to a draft order.
+// JSON body: productId, description, qty, unitPrice, uomId, taxTemplateIds (optional, comma-separated string OR array)
+// Subtotal = qty * unitPrice (rounded). TaxAmount = ComputeLineTax(...). Total = subtotal + taxAmount (rounded).
+// After appending the line, order subtotal/taxTotal/total are recomputed
+// by summing across all lines via collections/ops/ops.Sum.
+// Note: Go param is `desc` not `description` (reserved context key); JSON key stays "description".
+// Provided by acme-sales package.
+//
+// Per-state failure handlers: each errorable state routes to its own
+// <StateName>Failed terminal state with a LITERAL statusCode (chosen per
+// failure type) and $Alias.response.message for the message. Avoids the
+// WSL ?? operator which doesn't work for $Alias.field??literal when the
+// alias exists but the field is missing (tokenSegmentClass includes ?),
+// and avoids $? which is overwritten by worker.SetError to 500 on every
+// error path.
+
+module order_line_add
+
+import collections/ops
+import core/orchestration
+import core/utils
+import math/ops
+import money/calc
+import persistence/store
+import sequence/sequence
+import services/common
+
+workflow order_line_add {
+  start: LoadOrder
+
+  state LoadOrder {
+    action persistence/store/store.Get(
+      collection: "sales_orders",
+      id: $url.orderId
+    ) as LoadResult
+    on success -> GetLineId
+    on error -> LoadOrderFailed
+  }
+
+  state GetLineId {
+    action sequence/sequence.NextByCode(code: "sales-order-line", scope: "") as LineIdResult
+    on success -> ComputeSubtotal
+    on error -> GetLineIdFailed
+  }
+
+  state ComputeSubtotal {
+    action math/ops/ops.Mul(
+      a: $json.qty,
+      b: $json.unitPrice
+    ) as SubtotalProduct
+    on success -> RoundSubtotal
+    on error -> ComputeSubtotalFailed
+  }
+
+  state RoundSubtotal {
+    action money/calc/calc.Round(
+      amount: $SubtotalProduct.result,
+      currency: $LoadResult.response.doc.currencyCode
+    ) as SubtotalResult
+    on success -> ParseTaxIds
+    on error -> RoundSubtotalFailed
+  }
+
+  state ParseTaxIds {
+    action core/utils/utils.ParseTaxTemplateIds(
+      v: $json.taxTemplateIds??""
+    ) as ParsedIds
+    on success -> ReduceTax
+    on error -> ZeroTax
+  }
+
+  state ReduceTax {
+    action collections/ops/ops.Reduce(
+      arr: $ParsedIds.response.ids,
+      workflow: "solutions/tax/tax-amount-reducer",
+      init: {subtotal: $SubtotalResult.result, total: 0}
+    ) as TaxReduce
+    on success -> RoundTaxAmount
+    on error -> ZeroTax
+  }
+
+  state RoundTaxAmount {
+    action math/ops/ops.Round(
+      value: $TaxReduce.response.result.total,
+      decimals: 2
+    ) as TaxRound
+    on success -> ComputeTotal
+    on error -> RoundTaxAmountFailed
+  }
+
+  state ZeroTax {
+    action math/ops/ops.Round(
+      value: 0,
+      decimals: 2
+    ) as TaxRound
+    on success -> ComputeTotal
+    on error -> ZeroTaxFailed
+  }
+
+  state ComputeTotal {
+    action money/calc/calc.Add(
+      a: $SubtotalResult.result,
+      b: $TaxRound.response.result
+    ) as TotalSum
+    on success -> RoundTotal
+    on error -> ComputeTotalFailed
+  }
+
+  state RoundTotal {
+    action money/calc/calc.Round(
+      amount: $TotalSum.result,
+      currency: $LoadResult.response.doc.currencyCode
+    ) as TotalResult
+    on success -> AppendLine
+    on error -> RoundTotalFailed
+  }
+
+  state AppendLine {
+    action collections/ops/ops.Append(
+      arr: $LoadResult.response.doc.lines,
+      element: {
+        id: $LineIdResult.response.formatted,
+        orderId: $url.orderId,
+        productId: $json.productId,
+        description: $json.description??"",
+        quantity: $json.qty,
+        unitPrice: $json.unitPrice,
+        uomId: $json.uomId,
+        taxTemplateIds: $json.taxTemplateIds??"",
+        subtotal: $SubtotalResult.result,
+        taxAmount: $TaxRound.response.result,
+        total: $TotalResult.result
+      }
+    ) as AppendResult
+    on success -> SetLines
+    on error -> AppendLineFailed
+  }
+
+  state SetLines {
+    action core/utils/utils.SetValue(
+      key: "recomputeTotals.lines",
+      value: $AppendResult.response.arr
+    ) as LinesSet
+    on success -> SetCurrency
+    on error -> SetLinesFailed
+  }
+
+  state SetCurrency {
+    action core/utils/utils.SetValue(
+      key: "recomputeTotals.currency",
+      value: $LoadResult.response.doc.currencyCode
+    ) as CurrencySet
+    on success -> RecomputeTotalsFeature
+    on error -> SetCurrencyFailed
+  }
+
+  state RecomputeTotalsFeature {
+    action core/orchestration/orchestration.RunFeature(name: "features/recompute_totals") as RecomputeResult
+    on success -> ReadSubtotal
+    on error -> RecomputeTotalsFeatureFailed
+  }
+
+  state ReadSubtotal {
+    action core/utils/utils.GetValue(key: "recomputeTotals.subtotal") as SubRead
+    on success -> ReadTaxTotal
+    on error -> ReadSubtotalFailed
+  }
+
+  state ReadTaxTotal {
+    action core/utils/utils.GetValue(key: "recomputeTotals.taxTotal") as TaxRead
+    on success -> ReadTotal
+    on error -> ReadTaxTotalFailed
+  }
+
+  state ReadTotal {
+    action core/utils/utils.GetValue(key: "recomputeTotals.total") as TotalRead
+    on success -> StoreUpdate
+    on error -> ReadTotalFailed
+  }
+
+  state StoreUpdate {
+    action persistence/store/store.Update(
+      collection: "sales_orders",
+      id: $url.orderId,
+      doc: {
+        id: $LoadResult.response.doc.id,
+        number: $LoadResult.response.doc.number,
+        partnerId: $LoadResult.response.doc.partnerId,
+        date: $LoadResult.response.doc.date,
+        currencyCode: $LoadResult.response.doc.currencyCode,
+        state: $LoadResult.response.doc.state,
+        lines: $AppendResult.response.arr,
+        subtotal: $SubRead.response.value,
+        taxTotal: $TaxRead.response.value,
+        total: $TotalRead.response.value,
+        createdAt: $LoadResult.response.doc.createdAt,
+        updatedAt: "now"
+      }
+    ) as UpdateResult
+    on success -> OK
+    on error -> StoreUpdateFailed
+  }
+
+  state OK {
+    action services/common/response.Response(
+      value: {
+        id: $LineIdResult.response.formatted,
+        orderId: $url.orderId,
+        productId: $json.productId,
+        description: $json.description??"",
+        quantity: $json.qty,
+        unitPrice: $json.unitPrice,
+        uomId: $json.uomId,
+        taxTemplateIds: $json.taxTemplateIds??"",
+        subtotal: $SubtotalResult.result,
+        taxAmount: $TaxRound.response.result,
+        total: $TotalResult.result
+      },
+      statusCode: 201
+    ) as FinalResult
+    end ok
+  }
+
+  state LoadOrderFailed {
+    action services/common/response.Response(
+      value: { message: $LoadResult.response.message, code: $LoadResult.response.code },
+      statusCode: 404
+    ) as ErrorResult
+    end fail
+  }
+
+  state GetLineIdFailed {
+    action services/common/response.Response(
+      value: { message: $LineIdResult.response.message, code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state ComputeSubtotalFailed {
+    action services/common/response.Response(
+      value: { message: $SubtotalProduct.response.message, code: "line_add_failed" },
+      statusCode: 400
+    ) as ErrorResult
+    end fail
+  }
+
+  state RoundSubtotalFailed {
+    action services/common/response.Response(
+      value: { message: $SubtotalResult.response.message, code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state RoundTaxAmountFailed {
+    action services/common/response.Response(
+      value: { message: $TaxRound.response.message, code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state ZeroTaxFailed {
+    action services/common/response.Response(
+      value: { message: $TaxRound.response.message, code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state ComputeTotalFailed {
+    action services/common/response.Response(
+      value: { message: $TotalSum.response.message, code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state RoundTotalFailed {
+    action services/common/response.Response(
+      value: { message: $TotalResult.response.message, code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state AppendLineFailed {
+    action services/common/response.Response(
+      value: { message: $AppendResult.response.message, code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state SetLinesFailed {
+    action services/common/response.Response(
+      value: { message: "line_add failed", code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state SetCurrencyFailed {
+    action services/common/response.Response(
+      value: { message: "line_add failed", code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state RecomputeTotalsFeatureFailed {
+    action services/common/response.Response(
+      value: { message: "recompute totals failed", code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state ReadSubtotalFailed {
+    action services/common/response.Response(
+      value: { message: "recompute totals failed", code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state ReadTaxTotalFailed {
+    action services/common/response.Response(
+      value: { message: "recompute totals failed", code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state ReadTotalFailed {
+    action services/common/response.Response(
+      value: { message: "recompute totals failed", code: "line_add_failed" },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+
+  state StoreUpdateFailed {
+    action services/common/response.Response(
+      value: { message: $UpdateResult.response.message, code: $UpdateResult.response.code },
+      statusCode: 500
+    ) as ErrorResult
+    end fail
+  }
+}

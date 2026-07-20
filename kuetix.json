@@ -1,0 +1,31 @@
+{
+  "name": "acme-app-ecommerce",
+  "version": "0.1.0",
+  "description": "Kuetix Ecommerce application — online goods/services sales with shopping cart and checkout. Composes acme-cart, acme-sales, acme-stock, acme-invoice, acme-payment, acme-partner, acme-product, acme-tax, acme-ledger, acme-fiscal, acme-account, acme-currency, acme-auth, acme-company, acme-audit, acme-uom into a runnable HTTP API.",
+  "author": "kuetix",
+  "workflows": [],
+  "features": [],
+  "solutions": [
+    "workflows/solutions/ecommerce/startup.wsl"
+  ],
+  "dependencies": {
+    "github.com/kuetix/std-http": "v0.1.0",
+    "github.com/kuetix/std-core": "v1.0.0",
+    "github.com/acme-kuetix/acme-cart": "v0.1.0",
+    "github.com/acme-kuetix/acme-sales": "v0.1.0",
+    "github.com/acme-kuetix/acme-stock": "v0.1.0",
+    "github.com/acme-kuetix/acme-invoice": "v0.1.0",
+    "github.com/acme-kuetix/acme-payment": "v0.1.0",
+    "github.com/acme-kuetix/acme-partner": "v0.1.0",
+    "github.com/acme-kuetix/acme-product": "v0.1.0",
+    "github.com/acme-kuetix/acme-tax": "v0.1.0",
+    "github.com/acme-kuetix/acme-ledger": "v0.1.0",
+    "github.com/acme-kuetix/acme-fiscal": "v0.1.0",
+    "github.com/acme-kuetix/acme-account": "v0.1.0",
+    "github.com/acme-kuetix/acme-currency": "v0.1.0",
+    "github.com/acme-kuetix/acme-auth": "v0.1.0",
+    "github.com/acme-kuetix/acme-company": "v0.1.0",
+    "github.com/acme-kuetix/acme-audit": "v0.1.0",
+    "github.com/acme-kuetix/acme-uom": "v0.1.0"
+  }
+}

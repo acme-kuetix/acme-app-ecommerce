@@ -1,0 +1,1199 @@
+extends consts
+
+const {
+    routes: {
+        // ──────────────────────────────────────────────────────────
+        // Partners (acme-partner)
+        // ──────────────────────────────────────────────────────────
+        "/partners": [
+            {
+                method: "GET",
+                "workflow": "@solutions/partner/list",
+                description: "List all partners",
+                require: {}
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/partner/create",
+                description: "Create a new partner",
+                require: { json: ["name"] }
+            },
+        ],
+        "/partners/search": [
+            {
+                method: "GET",
+                "workflow": "@solutions/partner/search",
+                description: "Search partners by name/email/taxId",
+                require: { qs: ["q"] }
+            },
+        ],
+        "/partners/{partnerId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/partner/get",
+                description: "Get a single partner by id",
+                require: { url: ["partnerId"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/partner/update",
+                description: "Update a partner",
+                require: { url: ["partnerId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/partner/delete",
+                description: "Delete a partner (cascades to addresses + contacts)",
+                require: { url: ["partnerId"] }
+            },
+        ],
+        "/partners/{partnerId}/addresses": [
+            {
+                method: "GET",
+                "workflow": "@solutions/partner/address-list",
+                description: "List addresses on a partner (optional ?type=billing|shipping|other)",
+                require: { url: ["partnerId"], qs: ["type"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/partner/address-add",
+                description: "Add an address to a partner",
+                require: { url: ["partnerId"], json: ["type", "street", "city", "zip", "country"] }
+            },
+        ],
+        "/partners/{partnerId}/addresses/{addressId}": [
+            {
+                method: "PUT",
+                "workflow": "@solutions/partner/address-update",
+                description: "Update an address",
+                require: { url: ["partnerId", "addressId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/partner/address-delete",
+                description: "Delete an address",
+                require: { url: ["partnerId", "addressId"] }
+            },
+        ],
+        "/partners/{partnerId}/contacts": [
+            {
+                method: "GET",
+                "workflow": "@solutions/partner/contact-list",
+                description: "List contacts on a partner",
+                require: { url: ["partnerId"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/partner/contact-add",
+                description: "Add a contact person to a partner",
+                require: { url: ["partnerId"], json: ["name"] }
+            },
+        ],
+        "/partners/{partnerId}/contacts/{contactId}": [
+            {
+                method: "PUT",
+                "workflow": "@solutions/partner/contact-update",
+                description: "Update a contact",
+                require: { url: ["partnerId", "contactId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/partner/contact-delete",
+                description: "Delete a contact",
+                require: { url: ["partnerId", "contactId"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Products (acme-product)
+        // ──────────────────────────────────────────────────────────
+        "/products": [
+            {
+                method: "GET",
+                "workflow": "@solutions/product/list",
+                description: "List all products (optional ?type=goods|service)",
+                require: {}
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/product/create",
+                description: "Create a new product",
+                require: { json: ["sku", "name", "type"] }
+            },
+        ],
+        "/products/search": [
+            {
+                method: "GET",
+                "workflow": "@solutions/product/search",
+                description: "Search products by sku/name/description",
+                require: { qs: ["q"] }
+            },
+        ],
+        "/products/{id}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/product/get",
+                description: "Get a single product by id",
+                require: { url: ["id"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/product/update",
+                description: "Update a product",
+                require: { url: ["id"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/product/delete",
+                description: "Delete a product",
+                require: { url: ["id"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Currencies (acme-currency)
+        // ──────────────────────────────────────────────────────────
+        "/currencies": [
+            {
+                method: "GET",
+                "workflow": "@solutions/currency/list",
+                description: "List all currencies",
+                require: {}
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/currency/create",
+                description: "Create a new currency",
+                require: { json: ["code", "name", "decimals"] }
+            },
+        ],
+        "/currencies/convert": [
+            {
+                method: "GET",
+                "workflow": "@solutions/currency/convert",
+                description: "Convert amount between currencies",
+                require: { qs: ["amount", "from", "to"] }
+            },
+        ],
+        "/currencies/rates": [
+            {
+                method: "POST",
+                "workflow": "@solutions/currency/set-rate",
+                description: "Set a conversion rate between two currencies (bidirectional, latest)",
+                require: { json: ["from", "to", "rate"] }
+            },
+            {
+                method: "GET",
+                "workflow": "@solutions/currency/get-rate-on-date",
+                description: "Get the rate in effect on a date (most recent observation on or before)",
+                require: { qs: ["from", "to", "date"] }
+            },
+        ],
+        "/currencies/rates/dated": [
+            {
+                method: "POST",
+                "workflow": "@solutions/currency/set-dated-rate",
+                description: "Record a dated exchange rate observation (with history)",
+                require: { json: ["from", "to", "rate", "date"] }
+            },
+        ],
+        "/currencies/rates/history": [
+            {
+                method: "GET",
+                "workflow": "@solutions/currency/list-rate-history",
+                description: "List full observation history for a currency pair",
+                require: { qs: ["from", "to"] }
+            },
+        ],
+        "/currencies/{code}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/currency/get",
+                description: "Get a single currency by ISO code",
+                require: { url: ["code"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/currency/update",
+                description: "Update a currency",
+                require: { url: ["code"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/currency/delete",
+                description: "Delete a currency",
+                require: { url: ["code"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Accounts — Chart of Accounts (acme-account)
+        // ──────────────────────────────────────────────────────────
+        "/accounts": [
+            {
+                method: "GET",
+                "workflow": "@solutions/account/list",
+                description: "List all accounts (optional ?type=asset|liability|equity|revenue|expense)",
+                require: {}
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/account/create",
+                description: "Create a new account",
+                require: { json: ["code", "name", "type"] }
+            },
+        ],
+        "/accounts/tree": [
+            {
+                method: "GET",
+                "workflow": "@solutions/account/tree",
+                description: "Get the chart of accounts as a nested tree",
+                require: {}
+            },
+        ],
+        "/accounts/{accountId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/account/get",
+                description: "Get a single account by accountId",
+                require: { url: ["accountId"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/account/update",
+                description: "Update an account",
+                require: { url: ["accountId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/account/delete",
+                description: "Delete an account (fails if it has children)",
+                require: { url: ["accountId"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Fiscal years and periods (acme-fiscal)
+        // ──────────────────────────────────────────────────────────
+        "/fiscal/years": [
+            {
+                method: "GET",
+                "workflow": "@solutions/fiscal/year-list",
+                description: "List all fiscal years",
+                require: {}
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/fiscal/year-create",
+                description: "Create a fiscal year (starts in draft state)",
+                require: { json: ["name", "startDate", "endDate"] }
+            },
+        ],
+        "/fiscal/years/{yearId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/fiscal/year-get",
+                description: "Get a single fiscal year",
+                require: { url: ["yearId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/fiscal/year-delete",
+                description: "Delete a fiscal year and all its periods (must be draft or closed)",
+                require: { url: ["yearId"] }
+            },
+        ],
+        "/fiscal/years/{yearId}/open": [
+            {
+                method: "POST",
+                "workflow": "@solutions/fiscal/year-open",
+                description: "Transition a fiscal year from draft → open",
+                require: { url: ["yearId"] }
+            },
+        ],
+        "/fiscal/years/{yearId}/close": [
+            {
+                method: "POST",
+                "workflow": "@solutions/fiscal/year-close",
+                description: "Transition a fiscal year from open → closed (fails if periods are open)",
+                require: { url: ["yearId"] }
+            },
+        ],
+        "/fiscal/years/{yearId}/periods": [
+            {
+                method: "GET",
+                "workflow": "@solutions/fiscal/period-list",
+                description: "List all periods in a fiscal year",
+                require: { url: ["yearId"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/fiscal/period-create",
+                description: "Add a period to a fiscal year (starts in draft)",
+                require: { url: ["yearId"], json: ["name", "startDate", "endDate"] }
+            },
+        ],
+        "/fiscal/periods/for-date": [
+            {
+                method: "GET",
+                "workflow": "@solutions/fiscal/period-for-date",
+                description: "Find the period containing a date (YYYY-MM-DD)",
+                require: { qs: ["date"] }
+            },
+        ],
+        "/fiscal/periods/{periodId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/fiscal/period-get",
+                description: "Get a single period",
+                require: { url: ["periodId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/fiscal/period-delete",
+                description: "Delete a period (must be draft or closed)",
+                require: { url: ["periodId"] }
+            },
+        ],
+        "/fiscal/periods/{periodId}/open": [
+            {
+                method: "POST",
+                "workflow": "@solutions/fiscal/period-open",
+                description: "Transition a period from draft → open (parent year must be open)",
+                require: { url: ["periodId"] }
+            },
+        ],
+        "/fiscal/periods/{periodId}/close": [
+            {
+                method: "POST",
+                "workflow": "@solutions/fiscal/period-close",
+                description: "Transition a period from open → closed",
+                require: { url: ["periodId"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Ledger — Journals, Moves, MoveLines (acme-ledger)
+        // ──────────────────────────────────────────────────────────
+        "/ledger/journals": [
+            {
+                method: "GET",
+                "workflow": "@solutions/ledger/journal-list",
+                description: "List all journals (optional ?type=sale|purchase|cash|bank|general|misc)",
+                require: { qs: ["type"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/ledger/journal-create",
+                description: "Create an accounting journal",
+                require: { json: ["code", "name", "type"] }
+            },
+        ],
+        "/ledger/journals/{journalId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/ledger/journal-get",
+                description: "Get a single journal",
+                require: { url: ["journalId"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/ledger/journal-update",
+                description: "Update a journal (code is immutable)",
+                require: { url: ["journalId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/ledger/journal-delete",
+                description: "Delete a journal (fails if it has moves)",
+                require: { url: ["journalId"] }
+            },
+        ],
+        "/ledger/journals/{journalId}/moves": [
+            {
+                method: "POST",
+                "workflow": "@solutions/ledger/move-create",
+                description: "Create a draft move in a journal",
+                require: { url: ["journalId"], json: ["date"] }
+            },
+        ],
+        "/ledger/moves": [
+            {
+                method: "GET",
+                "workflow": "@solutions/ledger/move-list",
+                description: "List moves (optional ?journalId=, ?state=draft|posted)",
+                require: { qs: ["journalId", "state"] }
+            },
+        ],
+        "/ledger/moves/{moveId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/ledger/move-get",
+                description: "Get a single move with its lines",
+                require: { url: ["moveId"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/ledger/move-update",
+                description: "Update a draft move's date or reference",
+                require: { url: ["moveId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/ledger/move-delete",
+                description: "Delete a draft move and its lines",
+                require: { url: ["moveId"] }
+            },
+        ],
+        "/ledger/moves/{moveId}/post": [
+            {
+                method: "POST",
+                "workflow": "@solutions/ledger/move-post",
+                description: "Validate and post a draft move (double-entry balance check; rejects if fiscal period is closed)",
+                require: { url: ["moveId"] }
+            },
+        ],
+        "/ledger/moves/{moveId}/period": [
+            {
+                method: "PUT",
+                "workflow": "@solutions/ledger/move-set-period",
+                description: "Attach a fiscal period to a draft move (PostMove will reject if period is closed)",
+                require: {
+                    url: ["moveId"],
+                    json: ["periodId"]
+                }
+            },
+        ],
+        "/ledger/moves/{moveId}/lines": [
+            {
+                method: "GET",
+                "workflow": "@solutions/ledger/move-line-list",
+                description: "List all lines on a move",
+                require: { url: ["moveId"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/ledger/move-line-add",
+                description: "Add a debit/credit line to a draft move",
+                require: { url: ["moveId"], json: ["accountCode"] }
+            },
+        ],
+        "/ledger/lines/{moveLineId}": [
+            {
+                method: "DELETE",
+                "workflow": "@solutions/ledger/move-line-delete",
+                description: "Delete a line from a draft move",
+                require: { url: ["moveLineId"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Stock — Locations and Moves (acme-stock)
+        // ──────────────────────────────────────────────────────────
+        "/stock/locations": [
+            {
+                method: "GET",
+                "workflow": "@solutions/stock/location-list",
+                description: "List all locations (optional ?type=warehouse|internal|supplier|customer|production|transit)",
+                require: { qs: ["type"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/stock/location-create",
+                description: "Create a stock location",
+                require: { json: ["code", "name", "type"] }
+            },
+        ],
+        "/stock/locations/{locationId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/stock/location-get",
+                description: "Get a single location",
+                require: { url: ["locationId"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/stock/location-update",
+                description: "Update a location (code is immutable; type change fails if it has children)",
+                require: { url: ["locationId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/stock/location-delete",
+                description: "Delete a location (fails if it has children)",
+                require: { url: ["locationId"] }
+            },
+        ],
+        "/stock/locations/{locationId}/children": [
+            {
+                method: "GET",
+                "workflow": "@solutions/stock/location-children",
+                description: "List direct children of a location",
+                require: { url: ["locationId"] }
+            },
+        ],
+        "/stock/moves": [
+            {
+                method: "GET",
+                "workflow": "@solutions/stock/move-list",
+                description: "List moves (optional ?state=draft|confirmed|done|cancelled, ?sourceId=)",
+                require: { qs: ["state", "sourceId"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/stock/move-create",
+                description: "Create a draft stock move (header only; add lines separately)",
+                require: { json: ["reference", "sourceId", "destinationId"] }
+            },
+        ],
+        "/stock/moves/{moveId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/stock/move-get",
+                description: "Get a single move with its lines",
+                require: { url: ["moveId"] }
+            },
+        ],
+        "/stock/moves/{moveId}/lines": [
+            {
+                method: "POST",
+                "workflow": "@solutions/stock/move-line-add",
+                description: "Add a product line to a draft or confirmed move",
+                require: { url: ["moveId"], json: ["productId", "qty", "uomId"] }
+            },
+        ],
+        "/stock/moves/{moveId}/lines/{lineId}": [
+            {
+                method: "DELETE",
+                "workflow": "@solutions/stock/move-line-delete",
+                description: "Remove a line from a draft or confirmed move",
+                require: { url: ["moveId", "lineId"] }
+            },
+        ],
+        "/stock/moves/{moveId}/confirm": [
+            {
+                method: "POST",
+                "workflow": "@solutions/stock/move-confirm",
+                description: "Transition a draft move to confirmed (requires at least one line)",
+                require: { url: ["moveId"] }
+            },
+        ],
+        "/stock/moves/{moveId}/done": [
+            {
+                method: "POST",
+                "workflow": "@solutions/stock/move-done",
+                description: "Transition a confirmed move to done (immutable thereafter)",
+                require: { url: ["moveId"] }
+            },
+        ],
+        "/stock/moves/{moveId}/cancel": [
+            {
+                method: "POST",
+                "workflow": "@solutions/stock/move-cancel",
+                description: "Transition a draft or confirmed move to cancelled (done moves cannot be cancelled)",
+                require: { url: ["moveId"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Tax — Templates and computation (acme-tax)
+        // ──────────────────────────────────────────────────────────
+        "/tax/templates": [
+            {
+                method: "GET",
+                "workflow": "@solutions/tax/template-list",
+                description: "List all tax templates (optional ?active=true)",
+                require: { qs: ["active"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/tax/template-create",
+                description: "Create a tax template",
+                require: { json: ["code", "name", "rate"] }
+            },
+        ],
+        "/tax/templates/{templateId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/tax/template-get",
+                description: "Get a single tax template",
+                require: { url: ["templateId"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/tax/template-update",
+                description: "Update a tax template (code is immutable)",
+                require: { url: ["templateId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/tax/template-delete",
+                description: "Delete a tax template (fails if active — retire first)",
+                require: { url: ["templateId"] }
+            },
+        ],
+        "/tax/compute": [
+            {
+                method: "POST",
+                "workflow": "@solutions/tax/compute",
+                description: "Compute tax for a base amount using a template (handles includedInPrice both ways)",
+                require: { json: ["templateId", "base"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Invoices (acme-invoice) — tax computation wired to acme-tax
+        // ──────────────────────────────────────────────────────────
+        "/invoices": [
+            {
+                method: "GET",
+                "workflow": "@solutions/invoice/invoice-list",
+                description: "List invoices (optional ?state=draft|confirmed|posted|cancelled, ?partnerId=)",
+                require: { qs: ["state", "partnerId"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/invoice/invoice-create",
+                description: "Create a draft invoice (header only; add lines separately)",
+                require: { json: ["partnerId", "invoiceType", "date", "currencyCode"] }
+            },
+        ],
+        "/invoices/{invoiceId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/invoice/invoice-get",
+                description: "Get a single invoice with lines and computed totals",
+                require: { url: ["invoiceId"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/invoice/invoice-update",
+                description: "Update a draft invoice's mutable fields (date, dueDate, reference, note)",
+                require: { url: ["invoiceId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/invoice/invoice-delete",
+                description: "Delete a draft invoice (fails if not draft)",
+                require: { url: ["invoiceId"] }
+            },
+        ],
+        "/invoices/{invoiceId}/lines": [
+            {
+                method: "POST",
+                "workflow": "@solutions/invoice/invoice-line-add",
+                description: "Add a product line to a draft invoice (tax computed via acme-tax)",
+                require: { url: ["invoiceId"], json: ["productId", "qty", "unitPrice", "uomId"] }
+            },
+        ],
+        "/invoices/{invoiceId}/lines/{lineId}": [
+            {
+                method: "DELETE",
+                "workflow": "@solutions/invoice/invoice-line-delete",
+                description: "Remove a line from a draft invoice",
+                require: { url: ["invoiceId", "lineId"] }
+            },
+        ],
+        "/invoices/{invoiceId}/confirm": [
+            {
+                method: "POST",
+                "workflow": "@solutions/invoice/invoice-confirm",
+                description: "Transition a draft invoice to confirmed (requires at least one line)",
+                require: { url: ["invoiceId"] }
+            },
+        ],
+        "/invoices/{invoiceId}/post": [
+            {
+                method: "POST",
+                "workflow": "@solutions/invoice/invoice-post",
+                description: "Transition a confirmed invoice to posted (immutable thereafter; posts ledger move)",
+                require: { url: ["invoiceId"] }
+            },
+        ],
+        "/invoices/{invoiceId}/cancel": [
+            {
+                method: "POST",
+                "workflow": "@solutions/invoice/invoice-cancel",
+                description: "Transition a draft or confirmed invoice to cancelled (posted cannot be cancelled)",
+                require: { url: ["invoiceId"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Sales orders (acme-sales) — tax computation wired to acme-tax
+        // ──────────────────────────────────────────────────────────
+        "/sales-orders": [
+            {
+                method: "GET",
+                "workflow": "@solutions/sales/order-list",
+                description: "List sales orders (optional ?state=draft|sent|confirmed|done|cancelled, ?partnerId=)",
+                require: { qs: ["state", "partnerId"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/sales/order-create",
+                description: "Create a draft sales order (header only; add lines separately)",
+                require: { json: ["partnerId", "date", "currencyCode"] }
+            },
+        ],
+        "/sales-orders/{orderId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/sales/order-get",
+                description: "Get a single sales order with lines and computed totals",
+                require: { url: ["orderId"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/sales/order-update",
+                description: "Update a draft order's mutable fields (date, dueDate, reference, note)",
+                require: { url: ["orderId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/sales/order-delete",
+                description: "Delete a draft order (fails if not draft)",
+                require: { url: ["orderId"] }
+            },
+        ],
+        "/sales-orders/{orderId}/lines": [
+            {
+                method: "POST",
+                "workflow": "@solutions/sales/order-line-add",
+                description: "Add a product line to a draft order (tax computed via acme-tax)",
+                require: { url: ["orderId"], json: ["productId", "qty", "unitPrice", "uomId"] }
+            },
+        ],
+        "/sales-orders/{orderId}/lines/{lineId}": [
+            {
+                method: "DELETE",
+                "workflow": "@solutions/sales/order-line-delete",
+                description: "Remove a line from a draft order",
+                require: { url: ["orderId", "lineId"] }
+            },
+        ],
+        "/sales-orders/{orderId}/send": [
+            {
+                method: "POST",
+                "workflow": "@solutions/sales/order-send",
+                description: "Transition a draft order to sent (requires at least one line)",
+                require: { url: ["orderId"] }
+            },
+        ],
+        "/sales-orders/{orderId}/confirm": [
+            {
+                method: "POST",
+                "workflow": "@solutions/sales/order-confirm",
+                description: "Transition a sent order to confirmed",
+                require: { url: ["orderId"] }
+            },
+        ],
+        "/sales-orders/{orderId}/done": [
+            {
+                method: "POST",
+                "workflow": "@solutions/sales/order-done",
+                description: "Transition a confirmed order to done (immutable thereafter)",
+                require: { url: ["orderId"] }
+            },
+        ],
+        "/sales-orders/{orderId}/cancel": [
+            {
+                method: "POST",
+                "workflow": "@solutions/sales/order-cancel",
+                description: "Transition a draft, sent, or confirmed order to cancelled (done cannot be cancelled)",
+                require: { url: ["orderId"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Carts (acme-cart) — shopping cart CRUD + checkout
+        // ──────────────────────────────────────────────────────────
+        "/carts": [
+            {
+                method: "GET",
+                "workflow": "@solutions/cart/cart-list",
+                description: "List all carts (optional ?state=draft|converted|abandoned)",
+                require: { qs: ["state"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/cart/cart-create",
+                description: "Create a draft cart (body: {partnerId, currencyCode})",
+                require: { json: ["partnerId", "currencyCode"] }
+            },
+        ],
+        "/carts/{cartId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/cart/cart-get",
+                description: "Get a single cart with its lines",
+                require: { url: ["cartId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/cart/cart-delete",
+                description: "Delete a cart",
+                require: { url: ["cartId"] }
+            },
+        ],
+        "/carts/{cartId}/items": [
+            {
+                method: "POST",
+                "workflow": "@solutions/cart/cart-add-item",
+                description: "Add an item to the cart (merges if productId already in cart; body: {productId, qty, unitPrice, uomId, taxTemplateIds?})",
+                require: { url: ["cartId"], json: ["productId", "qty", "unitPrice", "uomId"] }
+            },
+        ],
+        "/carts/{cartId}/items/{productId}": [
+            {
+                method: "PUT",
+                "workflow": "@solutions/cart/cart-update-qty",
+                description: "Update item quantity (removes line if qty=0; body: {qty})",
+                require: { url: ["cartId", "productId"], json: ["qty"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/cart/cart-remove-item",
+                description: "Remove an item from the cart",
+                require: { url: ["cartId", "productId"] }
+            },
+        ],
+        "/carts/{cartId}/checkout": [
+            {
+                method: "POST",
+                "workflow": "@solutions/ecommerce/checkout",
+                description: "Convert cart to completed order: creates sales order + invoice + payment + stock move, marks cart converted",
+                require: { url: ["cartId"], json: ["paymentMethodId"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Auth — users, groups, permissions, login (acme-auth + std-auth)
+        // ──────────────────────────────────────────────────────────
+        "/auth/login": [
+            {
+                method: "POST",
+                "workflow": "@solutions/auth/auth-login",
+                description: "Authenticate and return a JWT",
+                require: { json: ["username", "password"] }
+            },
+        ],
+        "/auth/me": [
+            {
+                method: "GET",
+                "workflow": "@solutions/auth/auth-me",
+                description: "Get the current user's profile (Bearer token)",
+                require: { headers: ["Authorization"] }
+            },
+        ],
+        "/auth/check-permission": [
+            {
+                method: "POST",
+                "workflow": "@solutions/auth/auth-check-permission",
+                description: "Check whether a user has a permission code (granted via groups)",
+                require: { json: ["userId", "code"] }
+            },
+        ],
+        "/auth/users": [
+            {
+                method: "GET",
+                "workflow": "@solutions/auth/user-list",
+                description: "List users (optional ?activeOnly=true)",
+                require: {}
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/auth/user-create",
+                description: "Create a new user (password is bcrypt-hashed)",
+                require: { json: ["username", "email", "password"] }
+            },
+        ],
+        "/auth/users/{userId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/auth/user-get",
+                description: "Get a single user by id",
+                require: { url: ["userId"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/auth/user-update",
+                description: "Update a user's email and active flag (username is immutable)",
+                require: { url: ["userId"], json: ["email"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/auth/user-delete",
+                description: "Delete a user",
+                require: { url: ["userId"] }
+            },
+        ],
+        "/auth/users/{userId}/groups/{groupId}": [
+            {
+                method: "POST",
+                "workflow": "@solutions/auth/user-add-to-group",
+                description: "Add a user to a group (idempotent)",
+                require: { url: ["userId", "groupId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/auth/user-remove-from-group",
+                description: "Remove a user from a group (idempotent)",
+                require: { url: ["userId", "groupId"] }
+            },
+        ],
+        "/auth/users/{userId}/password": [
+            {
+                method: "POST",
+                "workflow": "@solutions/auth/user-set-password",
+                description: "Admin password reset (bcrypt-hashes the new password)",
+                require: { url: ["userId"], json: ["newPassword"] }
+            },
+        ],
+        "/auth/groups": [
+            {
+                method: "GET",
+                "workflow": "@solutions/auth/group-list",
+                description: "List groups (optional ?activeOnly=true)",
+                require: {}
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/auth/group-create",
+                description: "Create a new group (code is unique)",
+                require: { json: ["code", "name"] }
+            },
+        ],
+        "/auth/groups/{groupId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/auth/group-get",
+                description: "Get a single group by id",
+                require: { url: ["groupId"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/auth/group-update",
+                description: "Update a group's name and active flag (code is immutable)",
+                require: { url: ["groupId"], json: ["name"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/auth/group-delete",
+                description: "Delete a group (also removes from users and clears permission grants)",
+                require: { url: ["groupId"] }
+            },
+        ],
+        "/auth/groups/{groupId}/permissions": [
+            {
+                method: "GET",
+                "workflow": "@solutions/auth/permission-list-by-group",
+                description: "List permissions granted to a group",
+                require: { url: ["groupId"] }
+            },
+        ],
+        "/auth/groups/{groupId}/permissions/{permissionId}": [
+            {
+                method: "POST",
+                "workflow": "@solutions/auth/permission-grant",
+                description: "Grant a permission to a group (idempotent)",
+                require: { url: ["groupId", "permissionId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/auth/permission-revoke",
+                description: "Revoke a permission from a group (idempotent)",
+                require: { url: ["groupId", "permissionId"] }
+            },
+        ],
+        "/auth/permissions": [
+            {
+                method: "GET",
+                "workflow": "@solutions/auth/permission-list",
+                description: "List all permissions",
+                require: {}
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/auth/permission-create",
+                description: "Create a new permission (code is unique)",
+                require: { json: ["code", "name", "resource", "action"] }
+            },
+        ],
+        "/auth/permissions/{permissionId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/auth/permission-get",
+                description: "Get a single permission by id",
+                require: { url: ["permissionId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/auth/permission-delete",
+                description: "Delete a permission (also removes from all groups)",
+                require: { url: ["permissionId"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Companies (acme-company)
+        // ──────────────────────────────────────────────────────────
+        "/companies": [
+            {
+                method: "GET",
+                "workflow": "@solutions/company/list",
+                description: "List all companies (optional ?active=true|false)",
+                require: {}
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/company/create",
+                description: "Create a new company",
+                require: { json: ["legalName", "baseCurrency", "country"] }
+            },
+        ],
+        "/companies/{id}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/company/get",
+                description: "Get a single company by id",
+                require: { url: ["id"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/company/update",
+                description: "Update a company",
+                require: { url: ["id"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/company/delete",
+                description: "Delete a company",
+                require: { url: ["id"] }
+            },
+        ],
+
+        // ──────────────────────────────────────────────────────────
+        // Audit (acme-audit)
+        // ──────────────────────────────────────────────────────────
+        "/audit/entries": [
+            {
+                method: "GET",
+                "workflow": "@solutions/audit/list",
+                description: "List audit entries (filters: ?entityType=&entityId=&actor=&workflow=&limit=)",
+                require: {}
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/audit/record",
+                description: "Record an audit entry (append-only)",
+                require: { json: ["workflow"] }
+            },
+        ],
+        "/audit/entries/{entryId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/audit/get",
+                description: "Get a single audit entry by id",
+                require: { url: ["entryId"] }
+            },
+        ],
+
+        // Payments (acme-payment + acme-payment-manual provider)
+        // ──────────────────────────────────────────────────────────
+        "/payments": [
+            {
+                method: "GET",
+                "workflow": "@solutions/payment/payment-list",
+                description: "List payments (?state=, ?partnerId=)",
+                require: { qs: ["state", "partnerId"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/payment/payment-create",
+                description: "Create a draft payment (body: {partnerId, amount, currencyCode, date, methodId, providerId, reference?, note?})",
+                require: { json: ["partnerId", "amount", "currencyCode", "date", "methodId", "providerId"] }
+            },
+        ],
+        "/payments/{paymentId}": [
+            {
+                method: "GET",
+                "workflow": "@solutions/payment/payment-get",
+                description: "Get a single payment with allocations",
+                require: { url: ["paymentId"] }
+            },
+            {
+                method: "PUT",
+                "workflow": "@solutions/payment/payment-update",
+                description: "Update a draft payment (body: {date?, reference?, note?})",
+                require: { url: ["paymentId"] }
+            },
+            {
+                method: "DELETE",
+                "workflow": "@solutions/payment/payment-delete",
+                description: "Delete a draft payment (fails if not draft)",
+                require: { url: ["paymentId"] }
+            },
+        ],
+        "/payments/{paymentId}/authorize": [
+            {
+                method: "POST",
+                "workflow": "@solutions/payment/payment-authorize",
+                description: "Authorize a draft payment (calls provider.Authorize)",
+                require: { url: ["paymentId"] }
+            },
+        ],
+        "/payments/{paymentId}/capture": [
+            {
+                method: "POST",
+                "workflow": "@solutions/payment/payment-capture",
+                description: "Capture an authorized payment (calls provider.Capture, posts to ledger)",
+                require: { url: ["paymentId"] }
+            },
+        ],
+        "/payments/{paymentId}/refund": [
+            {
+                method: "POST",
+                "workflow": "@solutions/payment/payment-refund",
+                description: "Refund a captured payment (body: {amount}, full or partial)",
+                require: { url: ["paymentId"], json: ["amount"] }
+            },
+        ],
+        "/payments/{paymentId}/void": [
+            {
+                method: "POST",
+                "workflow": "@solutions/payment/payment-void",
+                description: "Void a draft or authorized payment",
+                require: { url: ["paymentId"] }
+            },
+        ],
+        "/payments/{paymentId}/allocations": [
+            {
+                method: "GET",
+                "workflow": "@solutions/payment/payment-allocation-list",
+                description: "List allocations for a payment",
+                require: { url: ["paymentId"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/payment/payment-allocation-add",
+                description: "Allocate payment to an invoice (body: {invoiceId, amount})",
+                require: { url: ["paymentId"], json: ["invoiceId", "amount"] }
+            },
+        ],
+        "/payment-methods": [
+            {
+                method: "GET",
+                "workflow": "@solutions/payment/payment-method-list",
+                description: "List payment methods for a partner (?partnerId=)",
+                require: { qs: ["partnerId"] }
+            },
+            {
+                method: "POST",
+                "workflow": "@solutions/payment/payment-method-create",
+                description: "Register a payment method (body: {partnerId, methodType, providerId, providerToken, displayName?, last4?, expiry?})",
+                require: { json: ["partnerId", "methodType", "providerId", "providerToken"] }
+            },
+        ],
+    }
+}

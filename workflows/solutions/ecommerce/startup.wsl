@@ -1,0 +1,47 @@
+module ecommerce_startup
+extends routes
+import api/http
+
+workflow startup {
+  start: SetupCORS
+
+  state SetupCORS {
+    action api/http/http.SetupCORS(options: {
+      AllowedMethods:   ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      AllowedHeaders:   ["Origin", "Content-Type", "Accept", "Authorization"],
+      ExposedHeaders:   ["Content-Length"],
+      AllowCredentials: true,
+      MaxAge:           12,
+    }) as CORSResult
+    on success -> RegisterRoutes
+    on error -> Failed
+  }
+
+  state RegisterRoutes {
+    action api/http/http.RegisterRoutes(
+      modulesPath: "modules",
+      workflowsPath: "workflows",
+      version: "0.1.0",
+      buildTime: "dev",
+      groups: $routes
+    ) as RouteResult
+    on success -> StartServer
+    on error -> Failed
+  }
+
+  state StartServer {
+    action api/http/http.StartServer(port: $args.port??"9997") as ServerResult
+    on success -> Running
+    on error -> Failed
+  }
+
+  state Running {
+    action services/common/response.Response(value: "Ecommerce API running", statusCode: 200) as FinalResult
+    end ok
+  }
+
+  state Failed {
+    action services/common/response.Response(value: "Failed to start Ecommerce API", statusCode: 500) as ErrorResult
+    end fail
+  }
+}
