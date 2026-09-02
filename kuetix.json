@@ -1,6 +1,6 @@
 {
   "name": "acme-app-ecommerce",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Kuetix Ecommerce application — online goods/services sales with shopping cart and checkout. Composes acme-cart, acme-sales, acme-stock, acme-invoice, acme-payment, acme-partner, acme-product, acme-tax, acme-ledger, acme-fiscal, acme-account, acme-currency, acme-auth, acme-company, acme-audit, acme-uom into a runnable HTTP API.",
   "author": "kuetix",
   "workflows": [],
